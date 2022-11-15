@@ -1,0 +1,13 @@
+[package]
+name = "Example"
+version = "0.0.1"
+license = "MIT"
+authors = ["Ted (tdergouzi@gmail.com)"]
+
+[addresses]
+Std = "0x1"
+example = "0x2"
+
+[dependencies]
+MoveStdlib = {git = "https://github.com/diem/move.git", subdir = "language/move-stdlib", rev = "ce59ea18a0a9e749560c9a4e88bde62df54537a4"}
+MoveNursery = {git = "https://github.com/diem/move.git", subdir = "language/move-stdlib/nursery", rev = "0c663286f535a6406080f0f6f77df320868fc49f"}
