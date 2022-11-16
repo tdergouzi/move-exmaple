@@ -1,4 +1,10 @@
-module example::generics {
+/*
+    Move - Generics
+
+    Generics can be used to define functions and structs over different input data types.
+*/ 
+
+module example::Generics {
 
     // Function takes a value of any type and return the value unchanged.
     public fun id<T>(x: T): T {
