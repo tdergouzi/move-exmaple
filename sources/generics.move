@@ -5,8 +5,6 @@
 */ 
 
 module example::Generics {
-
-    // Function takes a value of any type and return the value unchanged.
     public fun id<T>(x: T): T {
         (x: T)
     }

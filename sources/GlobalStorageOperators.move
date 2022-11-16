@@ -14,51 +14,51 @@
 module example::Counter {
     use Std::Signer;
 
-    // type T must has key ability
+    /// type T must has key ability
     struct Counter has key {i: u64}
 
-    // write
-    // move_to<T>(&signer,T)
-    // Publish T under signer.address
+    /// write
+    /// move_to<T>(&signer,T)
+    /// Publish T under signer.address
     public fun publish(account: &signer, i: u64) {
         move_to(account, Counter{i})
     }
 
-    // read
-    // borrow_global<T>(address): &T
-    // Return an immutable reference to the T stored under address
+    /// read
+    /// borrow_global<T>(address): &T
+    /// Return an immutable reference to the T stored under address
     public fun get_count(addr: address): u64 acquires Counter {
         borrow_global<Counter>(addr).i
     }
 
-    // update
-    // borrow_global_mut<T>(address): &mut T
-    // Return a mutable reference to the T stored under address
+    /// update
+    /// borrow_global_mut<T>(address): &mut T
+    /// Return a mutable reference to the T stored under address
     public fun increment(addr: address) acquires Counter {
         let c_ref = &mut borrow_global_mut<Counter>(addr).i;
         *c_ref = *c_ref + 1
     }
 
-    // reset
-    // borrow_global_mut<T>(address): &mut T
-    // Return a mutable reference to the T stored under address
+    /// reset
+    /// borrow_global_mut<T>(address): &mut T
+    /// Return a mutable reference to the T stored under address
     public fun reset(account: &signer) acquires Counter {
         let c_ref = &mut borrow_global_mut<Counter>(Signer::address_of(account)).i;
         *c_ref = 0
     }
 
-    // delete
-    // move_from<T>(address): T
-    // Remove T from address and return it
+    /// delete
+    /// move_from<T>(address): T
+    /// Remove T from address and return it
     public fun delete(account: &signer): u64 acquires Counter {
         let c = move_from<Counter>(Signer::address_of(account));
         let Counter { i } = c;
         i
     }
 
-    // check
-    // exists<T>(address): bool
-    // Return true if a T is stored under address
+    /// check
+    /// exists<T>(address): bool
+    /// Return true if a T is stored under address
     public fun check(addr: address): bool {
         exists<Counter>(addr)
     }
