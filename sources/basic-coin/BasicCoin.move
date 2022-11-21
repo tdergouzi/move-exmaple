@@ -1,6 +1,6 @@
 /// This moudle defines a minimal and generic Coin and Balance.
 /// Copy from https://github.com/move-language/move/blob/main/language/documentation/examples/experimental/basic-coin/sources/BasicCoin.move
-module example::BasicCoin {
+module BasicCoin::BasicCoin {
     use Std::Errors;
     use Std::Signer;
 

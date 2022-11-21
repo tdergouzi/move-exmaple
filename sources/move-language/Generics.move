@@ -4,7 +4,7 @@
     Generics can be used to define functions and structs over different input data types.
 */ 
 
-module example::Generics {
+module MoveLanguage::Generics {
     public fun id<T>(x: T): T {
         (x: T)
     }

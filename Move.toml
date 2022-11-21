@@ -6,7 +6,9 @@ authors = ["Ted (tdergouzi@gmail.com)"]
 
 [addresses]
 Std = "0x1"
-example = "0x2"
+MoveLanguage = "0x2"
+BasicCoin = "0x3"
+CoinSwap = "0x4"
 
 [dependencies]
 MoveStdlib = {git = "https://github.com/diem/move.git", subdir = "language/move-stdlib", rev = "ce59ea18a0a9e749560c9a4e88bde62df54537a4"}

@@ -11,7 +11,7 @@
     - The body of M::f invokes a function M::g declared in the same module that is annotated with acquires
 */
 
-module example::Counter {
+module MoveLanguage::Counter {
     use Std::Signer;
 
     /// type T must has key ability
@@ -68,8 +68,8 @@ module example::Counter {
     }
 }
 
-module example::OutOfCounter {
-    use example::Counter;
+module MoveLanguage::OutOfCounter {
+    use MoveLanguage::Counter;
 
     fun call_increment(addr: address) {
         Counter::increment(addr)

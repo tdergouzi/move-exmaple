@@ -1,4 +1,4 @@
-module example::UnitTest {
+module MoveLanguage::UnitTest {
     struct MyCoin has key {value: u64}
 
     public fun make_sure_non_zero_coin(coin: MyCoin): MyCoin {
