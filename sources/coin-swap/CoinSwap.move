@@ -76,8 +76,8 @@ module CoinSwap::CoinSwap {
         pool.coin2 = pool.coin2 + coin2_added;
         pool.share = pool.share + share_minted;
 
-        BasicCoin::transfer<CoinType1>(account, @CoinSwap, coin1_added, witness1);
-        BasicCoin::transfer<CoinType2>(account, @CoinSwap, coin2_added, witness2);
+        BasicCoin::transfer<CoinType1>(account, @CoinSwap, coin1, witness1);
+        BasicCoin::transfer<CoinType2>(account, @CoinSwap, coin2, witness2);
         PoolToken::mint<CoinType1, CoinType2>(Signer::address_of(account), share_minted);
     }
 
