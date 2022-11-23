@@ -23,8 +23,27 @@ module DiemAddr::DiemTimestamp {
         move_to(dr_account, timer);
     }
 
-    public fun update_global_time(account: &signer, proposer: address, timestamp:u64) {
+    public fun update_global_time(account: &signer, proposer: address, timestamp:u64) acquires CurrentTimeMicroseconds {
+        assert_operating();
+        CoreAddresses::assert_vm(account);
 
+        let global_timer = borrow_global_mut<CurrentTimeMicroseconds>(CoreAddresses::DIEM_ROOT_ADDRESS());
+        let now = global_timer.microsecond;
+        if (proposer == CoreAddresses::VM_RESERVED_ADDRESS()) {
+            assert!(now == timestamp, Errors::invalid_argument(ETIMESTAMP))
+        } else {
+            assert!(now < timestamp, Errors::invalid_argument(ETIMESTAMP))
+        };
+        global_timer.microsecond = timestamp;
+    }
+
+    public fun now_microseconds(): u64 acquires CurrentTimeMicroseconds {
+        assert_operating();
+        borrow_global<CurrentTimeMicroseconds>(CoreAddresses::DIEM_ROOT_ADDRESS()).microsecond
+    }
+
+    public fun now_seconds(): u64 acquires CurrentTimeMicroseconds {
+        now_microseconds() / MICRO_CONVERSION_FACTOR
     }
 
     public fun is_genesis(): bool {
@@ -49,7 +68,14 @@ module DiemAddr::DiemTimestamp {
 
     /// Assert operating state.
     public fun assert_operating() {
-
+        assert!(is_operating(), Errors::invalid_state(ENOT_OPERATING))
+    }
+    spec assert_operating {
+        pragma opaque = true;
+        include AbortsIfNotOperating;
+    }
+    spec schema AbortsIfNotOperating {
+        aborts_if !is_operating() with Errors::INVALID_STATE;
     }
 
 }
