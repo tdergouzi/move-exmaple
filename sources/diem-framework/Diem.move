@@ -3,11 +3,11 @@ module DiemAddr::Diem {
     use Std::Event::{Self, EventHandle};
     use Std::FixedPoint32::{Self, FixedPoint32};
     use Std::Signer;
-    use Std::Role;
     use Std::Vector;
     use DiemAddr::CoreAddresses;
     use DiemAddr::RegisteredCurrencies;
     use DiemAddr::DiemTimestamp;
+    use DiemAddr::Roles;
 
     struct Diem<phantom CoinType> has key, store {
         value: u64
@@ -54,7 +54,7 @@ module DiemAddr::Diem {
 
     struct CurrencyInfo<phantom CoinType> has key {
         /// The total value for the currency represented by `CoinType`. Mutable.
-        total_value: u64,
+        total_value: u128,
         preburn_value: u64,
         to_xdx_exchange_rate: FixedPoint32,
         is_synthetic: bool,
@@ -133,6 +133,98 @@ module DiemAddr::Diem {
     const MAX_OUTSTANDING_PREBURNS: u64 = 256;
 
     public fun initialize(dr_account: &signer) {
-        
+        DiemTimestamp::assert_genesis();
+        CoreAddresses::assert_diem_root(dr_account);
+        RegisteredCurrencies::initialize(dr_account)
+    }
+
+    public fun publish_burn_capability<CoinType: store>(dr_account: &signer, cap: BurnCapability<CoinType>) {
+         Roles::assert_diem_root(dr_account);
+         assert_is_currency<CoinType>();
+         assert!(!exists<BurnCapability<CoinType>>(Signer::address_of(dr_account)), Errors::already_published(EBURN_CAPABILITY));
+         move_to(dr_account, cap)
+    }
+
+    public fun mint<CoinType: store>(account: &signer, value: u64): Diem<CoinType> acquires MintCapability, CurrencyInfo {
+        let addr = Signer::address_of(account);
+        assert!(exists<MintCapability<CoinType>>(addr), Errors::requires_capability(EMINT_CAPABILITY));
+        mint_with_capability(value, borrow_global<MintCapability<CoinType>>(addr))
+    }
+
+    public fun burn<CoinType: store>(account: &signer, preburn_address: address, amount: u64) acquires BurnCapability, PreburnQueue {
+        let addr = Signer::address_of(account);
+        assert!(exists<BurnCapability<CoinType>>(addr), Errors::requires_capability(EBURN_CAPABILITY));
+        burn_with_capability(preburn_address, borrow_global<BurnCapability<CoinType>>(addr), amount)
+    }
+
+    public fun mint_with_capability<CoinType: store>(value: u64, _cap: &MintCapability<CoinType>): Diem<CoinType> acquires CurrencyInfo {
+        assert_is_currency<CoinType>();
+        let currency_code = currency_code<CoinType>();
+        let info = borrow_global_mut<CurrencyInfo<CoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS());
+        assert!(info.can_mint, Errors::invalid_state(EMINTING_NOT_ALLOWED));
+        assert!(MAX_U128 - info.total_value >= (value as u128), Errors::limit_exceeded(ECURRENCY_INFO));
+        info.total_value = info.total_value + (value as u128);
+        if (!info.is_synthetic) {
+            Event::emit_event(&mut info.mint_events, MintEvent{amount: value, currency_code})
+        };
+        Diem<CoinType>{value}
+    }
+
+    public fun burn_with_capability<CoinType: store>(preburn_address: address, _cap: &BurnCapability<CoinType>, amount: u64) acquires PreburnQueue {
+        let PreburnWithMetadata{preburn, metadata: _} = remove_preburn_from_queue<CoinType>(preburn_address, amount);
+        burn_with_resource_cap(&mut preburn, preburn_address, _cap);
+        let Preburn{to_burn} = preburn;
+        destroy_zero(to_burn)
+    }
+
+    public fun remove_preburn_from_queue<CoinType: store>(preburn_address: address, amount: u64): PreburnWithMetadata<CoinType>  acquires PreburnQueue{
+        assert!(exists<PreburnQueue<CoinType>>(preburn_address), Errors::not_published(EPREBURN_EMPTY));
+        let index = 0;
+        let preburn_queue = &mut borrow_global_mut<PreburnQueue<CoinType>>(preburn_address).preburns;
+        let queue_length = Vector::length(preburn_queue);
+
+        while({
+            spec {
+                assert index <= queue_length;
+                assert forall j in 0..index:preburn_queue[j].to_burn.value != amount;
+            };
+            (index < queue_length)
+        }){
+            let elem = Vector::borrow(preburn_queue, index);
+            if (elem.preburn.to_burn.value == amount) {
+                let preburn = Vector::remove(preburn_queue, index);
+                return preburn
+            };
+            index = index + 1;
+        };
+
+        spec {
+            assert index <= queue_length;
+            assert forall j in 0..index:preburn_queue[j].to_burn.value != amount;
+        };
+
+        abort Errors::invalid_state(EPREBURN_NOT_FOUND)
+    }
+
+    public fun burn_with_resource_cap<CoinType: store>(preburn: &Preburn<CoinType>, preburn_address: address, _cap: &BurnCapability<CoinType>) {
+        // TODO
+    }
+
+    public fun destroy_zero<CoinType: store>(coin: Diem<CoinType>) {
+        let Diem {value} = coin;
+        assert!(value == 0, Errors::invalid_argument(EDESTRUCTION_OF_NONZERO_COIN))
+    }
+
+    public fun is_currency<CoinType: store>(): bool {
+        exists<CurrencyInfo<CoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS())
+    }
+
+    public fun currency_code<CoinType: store>(): vector<u8> acquires CurrencyInfo{
+        assert_is_currency<CoinType>();
+        *&borrow_global<CurrencyInfo<CoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS()).currency_code
+    }
+
+    public fun assert_is_currency<CoinType: store>() {
+        assert!(is_currency<CoinType>(), Errors::not_published(ECURRENCY_INFO))
     }
 }
