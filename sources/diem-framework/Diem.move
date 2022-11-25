@@ -357,20 +357,36 @@ module DiemAddr::Diem {
         )
     }
 
-    public fun burn_now<CoinType: store>() {}
+    public fun burn_now<CoinType: store>(coin: Diem<CoinType>, preburn: &mut Preburn<CoinType>, preburn_address: address, _cap: &BurnCapability<CoinType>) acquires CurrencyInfo {
+        assert!(coin.value > 0, Errors::invalid_argument(ECOIN));
+        preburn_with_resource(coin, preburn, preburn_address);
+        burn_with_resource_cap(preburn, preburn_address, _cap)
+    }
 
-    public fun remove_burn_capability<CoinType: store>() {}
+    public fun remove_burn_capability<CoinType: store>(account: &signer): BurnCapability<CoinType> acquires BurnCapability {
+        let addr = Signer::address_of(account);
+        assert!(exists<BurnCapability<CoinType>>(addr), Errors::requires_capability(EBURN_CAPABILITY));
+        move_from<BurnCapability<CoinType>>(addr)
+    }
 
-    public fun preburn_value<CoinType: store>() {}
+    public fun preburn_value<CoinType: store>(): u64 acquires CurrencyInfo {
+        assert_is_currency<CoinType>();
+        borrow_global<CurrencyInfo<CoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS()).preburn_value
+    }
 
     public fun zero<CoinType: store>(): Diem<CoinType> {
         assert_is_currency<CoinType>();
         Diem<CoinType>{value: 0}
     }
 
-    public fun value<CoinType: store>() {}
+    public fun value<CoinType: store>(coin: &Diem<CoinType>): u64 {
+        coin.value
+    }
 
-    public fun split<CoinType: store>() {}
+    public fun split<CoinType: store>(coin: Diem<CoinType>, amount: u64): (Diem<CoinType>, Diem<CoinType>) {
+        let other = withdraw<CoinType>(&mut coin, amount);
+        (coin, other)
+    }
 
     public fun withdraw<CoinType: store>(coin: &mut Diem<CoinType>, value: u64): Diem<CoinType> {
         assert!(coin.value >= value, Errors::limit_exceeded(EAMOUNT_EXCEEDS_COIN_VALUE));
@@ -383,7 +399,10 @@ module DiemAddr::Diem {
         withdraw(coin, val)
     }
 
-    public fun join<CoinType: store>(){}
+    public fun join<CoinType: store>(coin1: Diem<CoinType>, coin2: Diem<CoinType>): Diem<CoinType> {
+        deposit<CoinType>(&mut coin1, coin2);
+        coin1
+    }
 
     public fun deposit<CoinType: store>(coin: &mut Diem<CoinType>, check: Diem<CoinType>) {
         let Diem{value} = check;
@@ -396,41 +415,126 @@ module DiemAddr::Diem {
         assert!(value == 0, Errors::invalid_argument(EDESTRUCTION_OF_NONZERO_COIN))
     }
 
-    public fun register_currency<CoinType: store>() {}
+    public fun register_currency<CoinType: store>(
+        dr_account: &signer,
+        to_xdx_exchange_rate: FixedPoint32,
+        is_synthetic: bool,
+        scaling_factor: u64,
+        fractional_part: u64,
+        currency_code: vector<u8>
+    ): (MintCapability<CoinType>, BurnCapability<CoinType>) {
+        Roles::assert_diem_root(dr_account);
+        CoreAddresses::assert_currency_info(dr_account);
+        assert!(exists<CurrencyInfo<CoinType>>(Signer::address_of(dr_account)), Errors::already_published(ECURRENCY_INFO));
+        assert!(0 < scaling_factor && scaling_factor < MAX_SCALING_FACTOR, Errors::invalid_argument(ECURRENCY_INFO));
+        move_to(dr_account, CurrencyInfo<CoinType>{
+            total_value: 0,
+            preburn_value: 0,
+            to_xdx_exchange_rate,
+            is_synthetic,
+            scaling_factor,
+            fractional_part,
+            currency_code: copy currency_code,
+            can_mint: true,
+            mint_events: Event::new_event_handle<MintEvent>(dr_account),
+            burn_events: Event::new_event_handle<BurnEvent>(dr_account),
+            preburn_events: Event::new_event_handle<PreburnEvent>(dr_account),
+            cancel_burn_events: Event::new_event_handle<CancelBurnEvent>(dr_account),
+            exchange_rate_update_events: Event::new_event_handle<ToXDXExchangeRateUpdateEvent>(dr_account)
+        });
+        RegisteredCurrencies::add_currency_code(dr_account, currency_code);
+        (MintCapability<CoinType>{}, BurnCapability<CoinType>{})
+    }
 
-    public fun register_SCS_currency<CoinType: store>() {}
+    public fun register_SCS_currency<CoinType: store>(
+        dr_account: &signer,
+        to_xdx_exchange_rate: FixedPoint32,
+        scaling_factor: u64,
+        fractional_part: u64,
+        currency_code: vector<u8>
+    ) {
+        Roles::assert_diem_root(dr_account);
+        let (mint_cap, burn_cap) = register_currency(
+            dr_account,
+            to_xdx_exchange_rate,
+            false,
+            scaling_factor,
+            fractional_part,
+            currency_code
+        );
+        move_to(dr_account, mint_cap);
+        publish_burn_capability<CoinType>(dr_account, burn_cap)
+    }
 
-    public fun market_cap<CoinType: store>() {}
+    public fun market_cap<CoinType: store>(): u128 acquires CurrencyInfo {
+        assert_is_currency<CoinType>();
+        borrow_global<CurrencyInfo<CoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS()).total_value
+    }
 
-    public fun approx_xdx_for_value<CoinType: store>() {}
+    public fun approx_xdx_for_value<FromCoinType: store>(from_value: u64): u64 acquires CurrencyInfo {
+        let xdx_exchange_rate = xdx_exchange_rate<FromCoinType>();
+        FixedPoint32::multiply_u64(from_value, xdx_exchange_rate)
+    }
 
-    public fun approx_xdx_for_coin<CoinType: store>() {}
+    public fun approx_xdx_for_coin<FromCoinType: store>(coin: &Diem<FromCoinType>): u64 acquires CurrencyInfo {
+        let from_value = coin.value;
+        approx_xdx_for_value<FromCoinType>(from_value)
+    }
 
     public fun is_currency<CoinType: store>(): bool {
         exists<CurrencyInfo<CoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS())
     }
 
-    public fun is_SCS_currency<CoinType: store>() {}
+    public fun is_SCS_currency<CoinType: store>(): bool acquires CurrencyInfo {
+        is_currency<CoinType>();
+        !borrow_global<CurrencyInfo<CoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS()).is_synthetic
+    }
 
     public fun is_synthetic_currency<CoinType: store>(): bool acquires CurrencyInfo {
         let addr = CoreAddresses::CURRENCY_INFO_ADDRESS();
         exists<CurrencyInfo<CoinType>>(addr) && borrow_global<CurrencyInfo<CoinType>>(addr).is_synthetic
     }
 
-    public fun scaling_factor<CoinType: store>() {}
+    public fun scaling_factor<CoinType: store>(): u64 acquires CurrencyInfo {
+        assert_is_currency<CoinType>();
+        borrow_global<CurrencyInfo<CoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS()).scaling_factor
+    }
 
-    public fun fractional_part<CoinType: store>() {}
+    public fun fractional_part<CoinType: store>(): u64 acquires CurrencyInfo{
+        assert_is_currency<CoinType>();
+        borrow_global<CurrencyInfo<CoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS()).fractional_part
+    }
 
     public fun currency_code<CoinType: store>(): vector<u8> acquires CurrencyInfo{
         assert_is_currency<CoinType>();
         *&borrow_global<CurrencyInfo<CoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS()).currency_code
     }
 
-    public fun update_xdx_exchange_rate<FromCoinType: store>() {}
+    public fun update_xdx_exchange_rate<FromCoinType: store>(dr_account: &signer, xdx_exchange_rate: FixedPoint32) acquires CurrencyInfo {
+        Roles::assert_diem_root(dr_account);
+        assert_is_currency<FromCoinType>();
+        let currency_info = borrow_global_mut<CurrencyInfo<FromCoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS());
+        currency_info.to_xdx_exchange_rate = xdx_exchange_rate;
+        Event::emit_event(
+            &mut currency_info.exchange_rate_update_events,
+            ToXDXExchangeRateUpdateEvent{
+                currency_code: *&currency_info.currency_code,
+                new_to_xdx_exchange_rate: FixedPoint32::get_raw_value(*&currency_info.to_xdx_exchange_rate),
+            }
+        )
+    }
 
-    public fun xdx_exchange_rate<CoinType: store>() {}
+    public fun xdx_exchange_rate<CoinType: store>(): FixedPoint32 acquires CurrencyInfo {
+        assert_is_currency<CoinType>();
+        *&borrow_global<CurrencyInfo<CoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS()).to_xdx_exchange_rate
+    }
 
-    public fun update_minting_ability<CoinType: store>() {}
+    public fun update_minting_ability<CoinType: store>(dr_account: &signer, can_mint: bool) acquires CurrencyInfo {
+        Roles::assert_diem_root(dr_account);
+        assert_is_currency<CoinType>();
+        let currency_info = borrow_global_mut<CurrencyInfo<CoinType>>(CoreAddresses::CURRENCY_INFO_ADDRESS());
+        currency_info.can_mint = can_mint
+    }
 
     public fun assert_is_currency<CoinType: store>() {
         assert!(is_currency<CoinType>(), Errors::not_published(ECURRENCY_INFO))
